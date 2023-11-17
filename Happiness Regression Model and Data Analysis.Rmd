@@ -1,0 +1,336 @@
+---
+title: "Happiness Regression Model and Data Analysis"
+author: ''
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collasped: false
+      smooth_scroll: false
+date: '2022-05-27'
+---
+
+# **Abstract**
+
+We aim to find a proper regression model for happiness and analyze the happiness data sets from 2015 to 2022. We analyze the variables provided in the data with significant impacts on happiness scores by their correlations. The dependent variables include GDP per capita ('GDP' in our code), Freedom, health status ('Health'), the integrity index ('Trust') and Generosity. We do data analysis based on these 5 variables, and create a model for predicting happiness given all 5 dependent variables. We also compare the before and after data of the COVID-19 pandemic to see whether peoples' lives are less happily.
+
+# **Introduction**
+
+We divided the data sets into two parts. The first part is to analyze and compare happiness and other variables, including the correlation between each variable and the happiness score, the normality of the data and data visualization. In the model generation part, we use linear regression and ridge regression methods to build our model for happiness.
+
+In the second part, we take Dec, 2019 as the boundary for the outbreak of COVID-19. We compare the changes in happiness, other variables and the correlation in pre-pandemic and post-pandemic period. We provide data visualization and our own interpretation. 
+
+# **Motivation**
+
+Are people living happily in Taiwan? The "World Happiness Report", a program of the United Nations and powered by the Gallup World Poll data, interviewed 1,000 respondents from about 150 countries every year. They asked them to rate their current life from 0 to 10, the worst to the best. From the latest report in 2022, Finland was the happiest country for five successive years, while Taiwan ranked 26th, was the first place in East Asia. Yet we've found out that most of the people around us were unhappy. Therefore, we were curious about how the factors is related to happiness in the World Happiness Report.
+
+We utilize the data sets on Kaggle, taking five variables to analyze which variables have great correlations with happiness from 2015 to 2022. Through our analysis, we want to find out the secret of happiness. On top of that, COVID-19 broke out at the end of 2019, which has had a dramatic impact on our lives. There are more restrictions such as wearing masks and lockdowns. Hence, we want to know whether peoples' happiness will drop due to the pandemic, and living in a more restrictive and depressing environment. We compare the happiness score before and after the outbreak of COVID-19 to observe its impact on people's mood.
+
+# **Methods**
+
+**Library**
+```{r echo=TRUE, message=FALSE}
+library(tidyverse)
+library(dplyr)
+library(DMwR2)
+library(ggplot2)
+library(reshape2)
+library(cowplot)
+library(glmnet)
+library(caret)
+library(repr)
+library(gapminder)
+library(gganimate)
+library(gifski)
+```
+
+**Read the Files**
+```{r echo=TRUE, message=FALSE}
+df2015 <- read_csv("2015_copy.csv")
+df2016 <- read_csv("2016_copy.csv")
+df2017 <- read_csv("2017_copy.csv")
+df2018 <- read_csv("2018_copy.csv")
+df2019 <- read_csv("2019_copy.csv")
+df2020 <- read_csv("2015_copy.csv")
+df2021 <- read_csv("2015_copy.csv")
+df2022 <- read_csv("2022_copy.csv")
+```
+
+## **Impute Missing Values**
+
+We found that df2018 exists a missing value in the Trust column. Since we don't want to drop the NAs, for this could lead to a loss of information, we decided to use KNN method to fill it.
+
+We choose KNN over the broadly-used mean method because research shows that KNN appears to provide a more robust and sensitive method for missing value estimation, and knnImputation surpass the average method as well as filling missing values with zeros.
+```{r echo=TRUE, message=FALSE}
+d2018 <- df2018[,-colSums(is.na(df2018))]
+clean.df2018 <- knnImputation(d2018,k=10) 
+df2018<-cbind(df2018$Country,clean.df2018)
+colnames(df2018) <- c("Country", "HappinessScore","GDP","Health","Freedom","Trust","Generosity") 
+```
+
+## **Data Merging**
+
+We then merge all the data sets from 2015 to 2022 into a long form data frame for further analysis.
+```{r}
+data = read.csv('2015_copy.csv') %>% mutate(year = 2015)
+for (i in 2016:2022){
+  path = paste( i, '_copy.csv', sep = "")
+  data1 = read.csv(path) %>% mutate(year = i)
+  if(i == 2016){
+   df = bind_rows(data, data1) }
+  else if(i == 2018){
+    df = bind_rows(df,df2018 %>% mutate(year =i))}
+  else{
+    df = bind_rows(df, data1)}
+}
+```
+
+## **Variables Reduction**
+
+### **5 Dependent Variables Boxplot**
+
+First, we analyze all 5 variables individually.
+```{r, fig.width=8, fig.height=8}
+p9=df%>%filter(year==2015)%>%select(GDP,Freedom,Health,Trust,Generosity)%>%gather(key='variables', value='measurements')%>%ggplot(aes(variables,measurements))+geom_boxplot()+coord_flip()
+p10=df%>%filter(year==2016)%>%select(GDP,Freedom,Health,Trust,Generosity)%>%gather(key='variables', value='measurements')%>%ggplot(aes(variables,measurements))+geom_boxplot()+coord_flip()
+p11=df%>%filter(year==2017)%>%select(GDP,Freedom,Health,Trust,Generosity)%>%gather(key='variables',value='measurements')%>%ggplot(aes(variables,measurements))+geom_boxplot()+coord_flip()
+p12=df%>%filter(year==2018)%>%select(GDP,Freedom,Health,Trust,Generosity)%>%gather(key='variables',value='measurements')%>%ggplot(aes(variables,measurements))+geom_boxplot()+coord_flip()
+p13=df%>%filter(year==2019)%>%select(GDP,Freedom,Health,Trust,Generosity)%>%gather(key='variables',value='measurements')%>%ggplot(aes(variables,measurements))+geom_boxplot()+coord_flip()
+p14=df%>%filter(year==2020)%>%select(GDP,Freedom,Health,Trust,Generosity)%>%gather(key='variables',value='measurements')%>%ggplot(aes(variables,measurements))+geom_boxplot()+coord_flip()
+p15=df%>%filter(year==2021)%>%select(GDP,Freedom,Health,Trust,Generosity)%>%gather(key='variables',value='measurements')%>%ggplot(aes(variables, measurements))+geom_boxplot()+coord_flip()
+p16=df%>%filter(year==2022)%>%select(GDP,Freedom,Health,Trust,Generosity)%>%gather(key='variables',value='measurements')%>%ggplot(aes(variables,measurements))+geom_boxplot()+coord_flip()
+plot_grid(p9,p10,p11,p12,p13,p14,p15,p16,ncol = 2,align ="v",labels=2015:2022,label_size=10)
+```
+
+From the box plots, we can observe that the GDP per capita have the largest range, indicating that the disparity between rich and poor is significant. Health also have a wide range and is negatively skewed, which means that most people live between 70 and 80 years, with fewer living less than this age.
+
+Then we analyze the correlation between all 5 variables.
+
+### **Correlation Table of All Variables**
+```{r}
+df %>% select(HappinessScore, GDP,Freedom,Health,Generosity,Trust) %>% cor() %>% knitr::kable()
+```
+
+From the table, we can observe that the correlation of Trust and Generosity to not only HappinessScore but also other variables are relatively low.
+
+### **Correlation Visualization**
+```{r, fig.width=8, fig.height=8}
+p1=df %>% filter(year==2015)%>%select(HappinessScore,GDP,Freedom,Health,Trust,Generosity)%>%cor()%>%melt()%>%ggplot()%>%+geom_tile(aes(Var1,Var2,fill=value))+theme(axis.text.x = element_text(angle = 30, hjust=1))
+p2=df %>% filter(year==2016)%>%select(HappinessScore,GDP,Freedom,Health,Trust,Generosity)%>%cor()%>%melt()%>%ggplot()%>%+geom_tile(aes(Var1,Var2,fill=value))+theme(axis.text.x = element_text(angle = 30, hjust=1))
+p3=df %>% filter(year==2017)%>%select(HappinessScore,GDP,Freedom,Health,Trust,Generosity)%>%cor()%>%melt()%>%ggplot()%>%+geom_tile(aes(Var1,Var2,fill=value))+theme(axis.text.x = element_text(angle = 30, hjust=1))
+p4=df %>% filter(year==2018)%>%select(HappinessScore,GDP,Freedom,Health,Trust,Generosity)%>%cor()%>%melt()%>%ggplot()%>%+geom_tile(aes(Var1,Var2,fill=value))+theme(axis.text.x = element_text(angle = 30, hjust=1))
+p5=df %>% filter(year==2019)%>%select(HappinessScore,GDP,Freedom,Health,Trust,Generosity)%>%cor()%>%melt()%>%ggplot()%>%+geom_tile(aes(Var1,Var2,fill=value))+theme(axis.text.x = element_text(angle = 30, hjust=1))
+p6=df %>% filter(year==2020)%>%select(HappinessScore,GDP,Freedom,Health,Trust,Generosity)%>%cor()%>%melt()%>%ggplot()%>%+geom_tile(aes(Var1,Var2,fill=value))+theme(axis.text.x = element_text(angle = 30, hjust=1))
+p7=df %>% filter(year==2021)%>%select(HappinessScore,GDP,Freedom,Health,Trust,Generosity)%>%cor()%>%melt()%>%ggplot()%>%+geom_tile(aes(Var1,Var2,fill=value))+theme(axis.text.x = element_text(angle = 30, hjust=1))
+p8=df %>% filter(year==2022)%>%select(HappinessScore,GDP,Freedom,Health,Trust,Generosity)%>%cor()%>%melt()%>%ggplot()%>%+geom_tile(aes(Var1,Var2,fill=value))+theme(axis.text.x = element_text(angle = 30, hjust=1))
+plot_grid(p1, p2, p3, p4, p5, p6, p7, p8, ncol=2,align="v",labels=2015:2022,label_size = 10)
+```
+
+From the heat map, we observe that Trust and Generosity have darker color to all the other variables apart from themselves. Also, there exists multicollinearities between 5 dependent variables, such as GDP and Health.
+
+From the table and the heat map, we can observe that Generosity and Trust are less relevant to HappinessScore.
+
+### **PCA method**
+```{r}
+#standardized prcomp()
+df_all<-df[,3:7]
+df_all_scale <- prcomp(scale(df_all))
+df_all_scale
+```
+
+The first principal component represents the maximum variance direction in the data.
+
+From the standardized data, GDP, Health and Freedom have close absolute values for PC1, so we think PC1 captures the HappinessScore related to GDP, Health and Freedom, which, again, confirm the results of significant variables from the methods above.
+
+### **Check the normality of happiness score**
+
+Since we have about 150 countries, we expect the distribution of HappinessScore to be normally distributed.
+```{r }
+par(mfrow=c(3, 3))
+qqnorm(df2015$HappinessScore,main = "2015")
+qqline(df2015$HappinessScore, qtype = 7)
+qqnorm(df2016$HappinessScore,main = "2016")
+qqline(df2016$HappinessScore, qtype = 7)
+qqnorm(df2017$HappinessScore,main = "2017")
+qqline(df2017$HappinessScore, qtype = 7)
+qqnorm(clean.df2018$HappinessScore,main = "2018")
+qqline(clean.df2018$HappinessScore, qtype = 7)
+qqnorm(df2019$HappinessScore,main = "2019")
+qqline(df2019$HappinessScore, qtype = 7)
+qqnorm(df2020$HappinessScore,main = "2020")
+qqline(df2020$HappinessScore, qtype = 7)
+qqnorm(df2021$HappinessScore,main = "2021")
+qqline(df2021$HappinessScore, qtype = 7)
+qqnorm(df2022$HappinessScore,main = "2022")
+qqline(df2022$HappinessScore, qtype = 7)
+qqnorm(df$HappinessScore,main = "all")
+qqline(df$HappinessScore, qtype = 7)
+```
+
+From the QQ plot, we can see that the HappinessScores from 2015 to 2022 are very close to normal distribution because the dots are all close to the qqline.
+
+## **Model Setting**
+
+We aim to build a model for happiness given the variables provided in the World Happiness Report. Here we take two methods to generate our models and see the differences. Linear Regression is the easiest way for establishing a relationship between dependent variable and independent variables using a regression line, while ridge regression is used when the data suffers from multicollinearity. From the heat map above, we can see that there are multicollinearity in the dependent variables; therefore we take ridge regression model as our second method.
+
+### **Linear Regression**
+```{r}
+regr_df <- lm(HappinessScore ~ GDP+Freedom+Health+Trust+Generosity, df)
+summary(regr_df)
+```
+
+We use the lm() function to carry out the basic information. Since the p-value of GDP, Health, Freedom and Generosity are sufficiently low, they have significant relationships with HappinessScore.
+The regression model produced by lm() is:
+ 
+$HappinessScore = 2.44065+0.96059*GDP + 1.68818*Health + 1.82247*Freedom + 0.53491*Trust + 0.75246*Generosity$,
+
+the Multiple R-squared is 0.7153 and the adjusted R-square is 0.7142, which implies a well performance on the HappinessScore prediction based on given data sets.
+
+### **Ridge Regression**
+
+We choose a second method: ridge regression, to build our model for HappinessScore prediction since all variables are significant.
+```{r}
+set.seed(100) 
+index = sample(1:nrow(df), 0.7*nrow(df)) 
+train = df[index,] # Create the training data 
+test = df[-index,] # Create the test data
+df_selsct<-select(df,HappinessScore,GDP,Freedom,Health,Trust,Generosity)
+cols_reg = c('HappinessScore','GDP', 'Health', 'Freedom','Trust','Generosity')
+dummies <- dummyVars(HappinessScore ~ ., data = df_selsct[,cols_reg])
+train_dummies = predict(dummies, newdata = train[,cols_reg])
+test_dummies = predict(dummies, newdata = test[,cols_reg])
+x = as.matrix(train_dummies)
+y_train = train$HappinessScore
+x_test = as.matrix(test_dummies)
+y_test = test$HappinessScore
+lambdas <- 10^seq(2, -3, by = -.1)
+ridge_reg = glmnet(x, y_train, nlambda = 25, alpha = 0, family = 'gaussian', lambda = lambdas)
+cv_ridge <- cv.glmnet(x, y_train, alpha = 0, lambda = lambdas)
+optimal_lambda <- cv_ridge$lambda.min
+optimal_lambda
+optimal_model <- glmnet(x, y_train, alpha = 0, lambda = optimal_lambda)
+coef(optimal_model)
+```
+
+First we divide our data sets into training and testing sets by the portion of 0.7 and 0.3 respectively.
+
+The Loss function of Ridge Regression = $OLS + alpha*summation$ (squared coefficient values).
+
+Regularized regression model involves a tuning hyperparameter, lambda. We have to run the glmnet() model for different values of lambda to find the optimal lambda. 
+The optimal lambda comes out to be 0.02511886, which minimizes the test MSE. The model produced by ridge regression using training data is:
+
+$HappinessScore = 2.4732612+0.9676434*GDP+1.7104741*Health+1.7783796*Freedom+0.4928200*Trust+0.6747172*Generosity$.
+
+We can observe that the coefficients estimated by linear regression and ridge regression are very close.
+
+## **Model Evaluation**
+```{r}
+# Compute R^2 from true and predicted values
+eval_results <- function(true, predicted, dat) {
+  SSE <- sum((predicted - true)^2)
+  SST <- sum((true - mean(true))^2)
+  R_square <- 1 - SSE / SST
+  RMSE = sqrt(SSE/nrow(dat))
+  # Model performance metrics
+data.frame(RMSE = RMSE,Rsquare = R_square)
+}
+# Prediction and evaluation on train data
+predictions_train <- predict(ridge_reg, s = optimal_lambda, newx = x)
+eval_results(y_train, predictions_train, train)
+# Prediction and evaluation on test data
+predictions_test <- predict(ridge_reg, s = optimal_lambda, newx = x_test)
+eval_results(y_test, predictions_test, test)
+```
+
+In order to evaluate our model, we use the predict function to generate predictions on the training and testing data sets and use the eval_results() to calculate and print the evaluation.
+
+The R-square for our model on the training and testing data sets are 0.7312325 and 0.6741951 respectively, both > 0.6, so we can conclude that the ridge regression model we build had performed well.
+
+## **COVID-19 Impact on Global Happiness**
+
+In order to observe the trends of HappinessScore and the three significant variables during 2015-2022, we compute their mean and draw line graphs. 
+
+### **Compute the Mean Before and After COVID-19**
+```{r echo=TRUE, message=FALSE}
+data <- read_csv("2015_copy.csv") %>%
+    summarise(year=2015,mean_HappinessScore=mean(HappinessScore),mean_GDP=mean(GDP),mean_Freedom=mean(Freedom),mean_Health=mean(Health))
+for (i in 2016:2022){
+  path=paste(i,'_copy.csv',sep="")
+  data1=read.csv(path)%>%
+    summarise(year=i,mean_HappinessScore=mean(HappinessScore),mean_GDP=mean(GDP),mean_Freedom=mean(Freedom),mean_Health=mean(Health))
+  if(i == 2016){
+   mean_df = bind_rows(data, data1) 
+  }
+  if(i==2018){
+    mean_df = bind_rows(mean_df,df2018)
+  }else{
+    mean_df=bind_rows(mean_df,data1)
+  }
+}
+```
+
+### **Mean Significant Variables of Every Countries during 2015-2022**
+```{r, warning=FALSE}
+plot_mean_HappinessScore = ggplot(mean_df, aes(x = year, y = mean_HappinessScore)) + geom_line()
+plot_mean_GDP = ggplot(mean_df, aes(x = year, y = mean_GDP)) + geom_line()
+plot_mean_Freedom = ggplot(mean_df, aes(x = year, y = mean_Freedom)) + geom_line()
+plot_mean_Health = ggplot(mean_df, aes(x = year, y = mean_Health)) + geom_line()
+plot_grid(plot_mean_HappinessScore, plot_mean_GDP, plot_mean_Freedom,plot_mean_Health, ncol = 2, align = "v")
+```
+
+According to the four line graphs, we can observe that HappinessScore and GDP both trending upwards after COVID-19. Furthermore, we can also observe that Health had dropped dramatically in 2020 due to COVID-19.
+
+### **HappinessScore to GDP**
+```{r, warning=FALSE}
+fig2<-df%>%ggplot(aes(GDP, HappinessScore))+geom_point(alpha = 0.7,show.legend=FALSE)+scale_x_log10()+labs(title='Year {frame_time}',x='GDP',y='HappinessScore')+transition_time(year)+ease_aes('linear') #呈現效果
+FIG2<-animate(fig2, duration = 8,fps=1,width = 500, height = 300)
+FIG2
+```
+
+In addition to line graphs, we use scatter plot to observe the correlations between HappinessScore and two variables (GDP and Health) separately. The correlation between HappinessScore and GDP is positive and increases a little bit after 2020.
+
+### **HappinessScore to Health**
+```{r, warning=FALSE}
+fig3<-df%>%ggplot(aes(Health, HappinessScore))+geom_point(alpha=0.7,show.legend=FALSE)+scale_x_log10()+labs(title='Year {frame_time}', x = 'Health',y='HappinessScore')+transition_time(year)+ease_aes('linear') #呈現效果
+FIG3<-animate(fig3, duration = 8,fps=1,width = 500, height = 300)
+FIG3
+```
+
+The correlation between HappinessScore and GDP is positive. Besides, the correlation increases after 2020, which means that health affects happiness more during COVID-19.
+
+# **Conclusion**
+
+From our analysis, we can know how the five variables affect happiness. The countries' GDP per capita has the most significant correlation with their happiness scores, followed by health, freedom and trust, and the least relevant variable is generosity. The above results show that wealth and health are important factors for people to be happy. Moreover, we can use our model to predict a country's happiness score and utilize on the government's policy making.
+In the second part, we observed that the outbreak of COVID-19 dose not lower the happiness scores because the correlation of GDP is greater than that of health. Therefore, we can conclude that the more prosperous in economic, the happier people will be despite COVID-19. 
+
+# **Questions**
+
+## **1. Project Idea**
+
+We want to know how the dependent variables affect happiness, so we use the World Happiness Report to observe the correlations between each variable and happiness score. We also build models to predict happiness score. Furthermore, we think the outbreak of COVID-19 also affects peoples' happiness to some degree, so we compare the happiness scores and each variable before and after COVID-19 to find significant variables, and whether the correlations between them and happiness scores had changed due to the pandemic.
+
+## **2. Used R techniques**
+
+**tidyverse()**: mutate(), filter(), select(), summarise(), group_by()
+
+**dplyr()**: gather(), bind_rows()
+
+**ggplot2()**: geom_point(), geom_tile(), geom_boxplot(), facet_wrap(), coord_flip(), transition_time(), ease_aes()
+
+Others: reshape2(), lm(), cbind(), sample(), predict(), bind_rows()
+
+## **3. Used new Packages and Functions**
+
+DMwR2(), knnImputation(), colSums(), prcomp(), qqnorm(), qqline(), glmnet(), cv.glmnet(), cowplot(), caret(), repr(), gapminder(), gganimate(), animate(), gifski()
+
+## **4. The Most Difficult Part**
+
+We put many efforts on dealing with missing values and the form of data binding. From seeking a reasonable filling method to the implementation of the method, we've done many research and adequate discussions. Since we have to fill the NAs before binding the 8 years data sets for further analysis, this part become the most crucial and basic part in our project.
+Also, interpreting the results is not an easy task. We've tried many visualization methods to find the clearest visual presentation. We found out that the results are not quite the same as we expected sometimes, forcing us to figured out how to interpret the results.  
+
+
+
+
+
+
